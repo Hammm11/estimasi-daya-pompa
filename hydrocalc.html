@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HydroCalc — Estimasi Daya Pompa</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: { extend: { fontFamily: { sans: ['Plus Jakarta Sans', 'sans-serif'], mono: ['Share Tech Mono', 'monospace'] } } }
+        }
+    </script>
+
+    <style>
+        :root {
+            --dk:   #0A3323;
+            --moss: #839958;
+            --beige:#F7F4D5;
+            --rose: #D3968C;
+            --teal: #105666;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background: #eceadc;
+            min-height: 100vh;
+            transition: background .3s, color .3s;
+        }
+        body.dark {
+            background: #040f09;
+            color: var(--beige);
+        }
+
+        /* Subtle grid background */
+        body::before {
+            content: '';
+            position: fixed; inset: 0;
+            background-image:
+                linear-gradient(rgba(16,86,102,.06) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(16,86,102,.06) 1px, transparent 1px);
+            background-size: 32px 32px;
+            pointer-events: none; z-index: 0;
+        }
+        body.dark::before {
+            background-image:
+                linear-gradient(rgba(247,244,213,.04) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(247,244,213,.04) 1px, transparent 1px);
+        }
+
+        .glass {
+            background: rgba(247,244,213,.55);
+            backdrop-filter: blur(18px);
+            -webkit-backdrop-filter: blur(18px);
+            border: 1px solid rgba(16,86,102,.14);
+        }
+        .dark .glass {
+            background: rgba(10,51,35,.55);
+            border: 1px solid rgba(211,150,140,.14);
+        }
+
+        .card {
+            background: rgba(255,255,255,.45);
+            border: 1px solid rgba(16,86,102,.10);
+            transition: border-color .2s, transform .2s;
+        }
+        .dark .card {
+            background: rgba(4,15,9,.35);
+            border: 1px solid rgba(211,150,140,.10);
+        }
+        .card:hover { border-color: rgba(16,86,102,.28); }
+        .dark .card:hover { border-color: rgba(211,150,140,.28); }
+
+        .text-main  { color: var(--teal); }
+        .dark .text-main { color: var(--rose); }
+        .text-sub   { color: rgba(10,51,35,.65); }
+        .dark .text-sub { color: rgba(247,244,213,.60); }
+        .label-xs   { font-size: 10px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
+
+        /* Sliders */
+        input[type=range] {
+            -webkit-appearance: none; appearance: none;
+            width: 100%; height: 6px; border-radius: 999px;
+            background: rgba(16,86,102,.18); cursor: pointer;
+        }
+        .dark input[type=range] { background: rgba(247,244,213,.18); }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none; appearance: none;
+            width: 18px; height: 18px; border-radius: 50%;
+            background: var(--teal);
+            box-shadow: 0 0 0 3px rgba(16,86,102,.2);
+            transition: transform .12s, box-shadow .12s;
+        }
+        .dark input[type=range]::-webkit-slider-thumb { background: var(--rose); }
+        input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.25); box-shadow: 0 0 0 5px rgba(16,86,102,.25); }
+
+        /* Number input */
+        input[type=number] {
+            font-family: 'Share Tech Mono', monospace;
+            background: rgba(255,255,255,.6);
+            border: 1px solid rgba(16,86,102,.2);
+            border-radius: 10px;
+            color: var(--teal);
+            text-align: right;
+            transition: border-color .2s, box-shadow .2s;
+        }
+        .dark input[type=number] {
+            background: rgba(4,15,9,.5);
+            border-color: rgba(211,150,140,.2);
+            color: var(--rose);
+        }
+        input[type=number]:focus {
+            outline: none;
+            border-color: var(--teal);
+            box-shadow: 0 0 0 3px rgba(16,86,102,.12);
+        }
+        .dark input[type=number]:focus { border-color: var(--rose); box-shadow: 0 0 0 3px rgba(211,150,140,.12); }
+        input[type=number]::-webkit-inner-spin-button { opacity: .4; }
+
+        /* Gear spin */
+        @keyframes gear-spin { to { transform: rotate(360deg); } }
+        .gear { animation: gear-spin linear infinite; transform-origin: center; }
+
+        /* Water fill */
+        @keyframes wave-bob {
+            0%,100% { transform: translateY(0); }
+            50%      { transform: translateY(-4px); }
+        }
+        .water-body {
+            background: linear-gradient(180deg, #60a5fa 0%, #1d4ed8 100%);
+            transition: height .6s cubic-bezier(.4,0,.2,1);
+            position: relative; overflow: hidden;
+        }
+        .water-body::after {
+            content: '';
+            position: absolute; top: -6px; left: -20%; width: 140%; height: 12px;
+            background: rgba(255,255,255,.35);
+            border-radius: 50%;
+            animation: wave-bob 2s ease-in-out infinite;
+        }
+
+        /* Pipe flow */
+        @keyframes flow-right {
+            from { transform: translateX(-100%); }
+            to   { transform: translateX(100%); }
+        }
+        .flow-stripe {
+            position: absolute; inset: 0;
+            background: repeating-linear-gradient(90deg, transparent 0, transparent 10px, rgba(255,255,255,.4) 10px, rgba(255,255,255,.4) 18px);
+            animation: flow-right linear infinite;
+        }
+
+        /* Pump pulse */
+        @keyframes pump-pulse {
+            0%,100% { box-shadow: 0 0 0 0 rgba(16,86,102,.4); }
+            50%      { box-shadow: 0 0 0 10px rgba(16,86,102,.0); }
+        }
+        .pump-body { animation: pump-pulse 1.8s ease-in-out infinite; }
+
+        /* Result flash */
+        @keyframes flash { 0%,100% { opacity:1; } 50% { opacity:.4; } }
+        .flash { animation: flash .25s ease; }
+
+        /* Modal */
+        .modal-wrap {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,.55);
+            display: flex; align-items: center; justify-content: center;
+            padding: 1rem;
+            opacity: 0; pointer-events: none;
+            transition: opacity .25s;
+            z-index: 50;
+        }
+        .modal-wrap.open { opacity: 1; pointer-events: auto; }
+        .modal-box {
+            transform: scale(.9);
+            transition: transform .25s;
+        }
+        .modal-wrap.open .modal-box { transform: scale(1); }
+
+        /* Load bar color states */
+        .bar-low  { background: #3b82f6; }
+        .bar-mid  { background: var(--moss); }
+        .bar-high { background: #ef4444; }
+
+        /* Tooltip badge */
+        .badge { display: inline-flex; align-items: center; gap: 4px; font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; }
+        .badge-green { background: rgba(16,197,94,.12); color: #059669; }
+        .badge-amber { background: rgba(245,158,11,.12); color: #d97706; }
+        .badge-red   { background: rgba(239,68,68,.12);  color: #dc2626; }
+
+        /* Responsive overflow guard */
+        .overflow-x-safe { overflow-x: auto; }
+    </style>
+</head>
+
+<body class="p-3 sm:p-6 relative z-10">
+<div class="max-w-5xl mx-auto relative z-10">
+
+    <!-- ═══ HEADER ═══ -->
+    <header class="glass rounded-[28px] px-5 py-3 mb-5 flex flex-col sm:flex-row justify-between items-center gap-3">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-2xl bg-[#105666] flex items-center justify-center shadow-lg">
+                <i class="fa-solid fa-droplet text-[#F7F4D5] text-base"></i>
+            </div>
+            <div>
+                <h1 class="text-lg font-extrabold leading-none text-main">HydroCalc</h1>
+                <p class="font-mono label-xs text-sub" style="font-size:9px;">Pump Power Estimator</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-3 font-mono text-[11px] text-sub">
+            <span id="liveClock" class="opacity-70"></span>
+            <button onclick="toggleDark()" class="w-7 h-7 rounded-xl bg-white/30 dark:bg-black/20 flex items-center justify-center hover:scale-110 transition-transform" title="Toggle dark mode">
+                <i id="themeIcon" class="fa-solid fa-moon text-main text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- ═══ MAIN GRID ═══ -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+
+        <!-- ── LEFT: INPUT PANEL ── -->
+        <div class="lg:col-span-4 flex flex-col gap-4">
+
+            <!-- Formula card -->
+            <div class="card rounded-2xl px-4 py-3">
+                <p class="label-xs text-sub mb-2"><i class="fa-solid fa-function mr-1"></i>Rumus Daya Pompa</p>
+                <div class="font-mono text-center text-sm font-bold text-main bg-white/40 dark:bg-black/20 rounded-xl py-2 px-3 mb-2 tracking-wide">
+                    P = (ρ · g · Q · H) / η
+                </div>
+                <div class="font-mono text-[10px] text-sub space-y-0.5">
+                    <div class="flex justify-between"><span>ρ (rho) — massa jenis air</span><span class="font-bold">1000 kg/m³</span></div>
+                    <div class="flex justify-between"><span>g — gravitasi</span><span class="font-bold">9,81 m/s²</span></div>
+                </div>
+            </div>
+
+            <!-- Input sliders -->
+            <div class="card rounded-2xl px-4 py-4">
+                <p class="label-xs text-sub mb-4"><i class="fa-solid fa-sliders mr-1"></i>Parameter Input</p>
+
+                <!-- Q -->
+                <div class="mb-5">
+                    <div class="flex justify-between items-center mb-1.5">
+                        <label class="text-xs font-bold flex items-center gap-1.5 text-main">
+                            <i class="fa-solid fa-faucet-drip text-blue-500 text-[10px]"></i>Debit Air (Q)
+                        </label>
+                        <span class="font-mono text-[10px] text-sub">L/detik</span>
+                    </div>
+                    <div class="flex gap-2 items-center">
+                        <input type="range" id="sliderQ" min="1" max="100" value="25" class="flex-1" oninput="syncInput('Q')">
+                        <input type="number" id="numQ" min="1" max="100" value="25" class="w-16 py-1 px-2 text-xs" oninput="syncSlider('Q')">
+                    </div>
+                </div>
+
+                <!-- H -->
+                <div class="mb-5">
+                    <div class="flex justify-between items-center mb-1.5">
+                        <label class="text-xs font-bold flex items-center gap-1.5 text-main">
+                            <i class="fa-solid fa-arrows-up-down text-emerald-500 text-[10px]"></i>Head Pompa (H)
+                        </label>
+                        <span class="font-mono text-[10px] text-sub">Meter</span>
+                    </div>
+                    <div class="flex gap-2 items-center">
+                        <input type="range" id="sliderH" min="1" max="100" value="35" class="flex-1" oninput="syncInput('H')">
+                        <input type="number" id="numH" min="1" max="100" value="35" class="w-16 py-1 px-2 text-xs" oninput="syncSlider('H')">
+                    </div>
+                </div>
+
+                <!-- η -->
+                <div>
+                    <div class="flex justify-between items-center mb-1.5">
+                        <label class="text-xs font-bold flex items-center gap-1.5 text-main">
+                            <i class="fa-solid fa-gauge-high text-amber-500 text-[10px]"></i>Efisiensi Pompa (η)
+                        </label>
+                        <span class="font-mono text-[10px] text-sub">%</span>
+                    </div>
+                    <div class="flex gap-2 items-center">
+                        <input type="range" id="sliderEff" min="10" max="100" value="75" class="flex-1" oninput="syncInput('Eff')">
+                        <input type="number" id="numEff" min="10" max="100" value="75" class="w-16 py-1 px-2 text-xs" oninput="syncSlider('Eff')">
+                    </div>
+                </div>
+            </div>
+
+            <!-- OUTPUT: Primary power -->
+            <div class="bg-[#105666] rounded-3xl p-5 shadow-xl relative overflow-hidden cursor-pointer group" onclick="openModal('mDaya')">
+                <div class="absolute -right-6 -bottom-8 text-white/5 text-9xl group-hover:scale-110 transition-transform select-none pointer-events-none">
+                    <i class="fa-solid fa-bolt"></i>
+                </div>
+                <p class="font-mono label-xs text-[#F7F4D5]/50 mb-1">Estimasi Daya Listrik</p>
+                <div id="outKW" class="font-mono text-4xl font-black text-[#F7F4D5] mb-3 tracking-tight transition-all">— kW</div>
+                <div class="grid grid-cols-2 gap-2 border-t border-white/10 pt-3 text-center font-mono">
+                    <div class="bg-white/5 rounded-xl py-2">
+                        <p class="text-[9px] text-[#F7F4D5]/40 uppercase mb-0.5">Watt</p>
+                        <p id="outW" class="text-xs font-bold text-[#F7F4D5]">—</p>
+                    </div>
+                    <div class="bg-white/5 rounded-xl py-2">
+                        <p class="text-[9px] text-[#F7F4D5]/40 uppercase mb-0.5">Horsepower</p>
+                        <p id="outHP" class="text-xs font-bold text-[#F7F4D5]">—</p>
+                    </div>
+                </div>
+                <p class="text-[9px] font-mono text-[#F7F4D5]/30 mt-2 text-center">klik untuk detail →</p>
+            </div>
+        </div>
+
+        <!-- ── RIGHT: VISUALISASI ── -->
+        <div class="lg:col-span-8 flex flex-col gap-5">
+
+            <!-- ══ VISUALISASI SISTEM POMPA ══ -->
+            <div class="card rounded-3xl p-4">
+                <div class="flex justify-between items-center mb-4">
+                    <p class="label-xs text-main"><i class="fa-solid fa-diagram-project mr-1"></i>Visualisasi Sistem Pompa Air</p>
+                    <span class="badge badge-green">
+                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>Sistem Aktif
+                    </span>
+                </div>
+
+                <!-- Scene -->
+                <div class="relative bg-[#105666]/5 dark:bg-black/20 rounded-2xl p-4 overflow-hidden select-none">
+
+                    <!-- SKY / BACKGROUND decoration -->
+                    <div class="absolute inset-0 overflow-hidden rounded-2xl pointer-events-none">
+                        <div class="absolute top-2 right-6 w-16 h-6 rounded-full bg-[#105666]/5 dark:bg-white/3"></div>
+                        <div class="absolute top-4 right-16 w-10 h-4 rounded-full bg-[#105666]/4"></div>
+                    </div>
+
+                    <div class="flex items-end gap-0 relative z-10" style="min-height:180px;">
+
+                        <!-- SUMBER TANK -->
+                        <div class="flex flex-col items-center" style="width:18%;">
+                            <span class="font-mono text-[9px] text-sub mb-1 uppercase tracking-wide">Sumber</span>
+                            <!-- Tank shell -->
+                            <div class="w-full rounded-t-xl border-2 border-neutral-300 dark:border-neutral-600 bg-neutral-100 dark:bg-neutral-800 overflow-hidden relative" style="height:120px;">
+                                <!-- Water fill -->
+                                <div class="absolute bottom-0 left-0 right-0 water-body" id="visWaterSrc" style="height:40%;"></div>
+                                <!-- Label -->
+                                <div class="absolute inset-0 flex items-center justify-center">
+                                    <span class="font-mono text-[9px] font-black text-neutral-400 dark:text-neutral-500 mix-blend-difference">SUMBER</span>
+                                </div>
+                            </div>
+                            <!-- Tank base -->
+                            <div class="w-3/4 h-1.5 bg-neutral-400 dark:bg-neutral-600 rounded-b"></div>
+                        </div>
+
+                        <!-- PIPE FROM SOURCE -->
+                        <div class="flex-1 flex flex-col justify-end pb-1" style="padding-bottom:14px;">
+                            <div class="relative h-5 rounded-sm overflow-hidden bg-[#1d4ed8]/20">
+                                <div class="flow-stripe" id="visFlow1" style="animation-duration:1.5s;"></div>
+                                <div class="absolute inset-0 border-y border-[#1d4ed8]/30"></div>
+                            </div>
+                        </div>
+
+                        <!-- PUMP UNIT -->
+                        <div class="flex flex-col items-center" style="width:16%; margin-bottom:8px;">
+                            <!-- Pump body -->
+                            <div id="visPump" class="pump-body w-14 h-14 rounded-full bg-[#105666] border-3 border-[#F7F4D5]/20 shadow-xl flex items-center justify-center relative">
+                                <i id="visGear" class="fa-solid fa-gear text-[#F7F4D5] text-xl gear" style="animation-duration:2s;"></i>
+                                <!-- Voltage spark -->
+                                <div class="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-amber-400/90 flex items-center justify-center shadow">
+                                    <i class="fa-solid fa-bolt text-[8px] text-amber-900"></i>
+                                </div>
+                            </div>
+                            <div class="font-mono text-[9px] text-main font-bold mt-1 text-center bg-white/50 dark:bg-black/30 px-2 py-0.5 rounded-full shadow-sm" id="visLabelQ">25 L/s</div>
+                            <div class="font-mono text-[8px] text-sub" id="visLabelKW">— kW</div>
+                        </div>
+
+                        <!-- PIPE TO DEST -->
+                        <div class="flex-1 flex flex-col justify-end pb-1" style="padding-bottom:14px;">
+                            <div class="relative h-5 rounded-sm overflow-hidden bg-[#1d4ed8]/20">
+                                <div class="flow-stripe" id="visFlow2" style="animation-duration:1.5s;"></div>
+                                <div class="absolute inset-0 border-y border-[#1d4ed8]/30"></div>
+                            </div>
+                        </div>
+
+                        <!-- TUJUAN TANK -->
+                        <div class="flex flex-col items-center" style="width:18%;">
+                            <span class="font-mono text-[9px] text-sub mb-1 uppercase tracking-wide" id="visHeadLabel">Head: 35m</span>
+                            <div class="w-full rounded-t-xl border-2 border-neutral-300 dark:border-neutral-600 bg-neutral-100 dark:bg-neutral-800 overflow-hidden relative" style="height:120px;">
+                                <div class="absolute bottom-0 left-0 right-0 water-body" id="visWaterDst" style="height:60%;"></div>
+                                <div class="absolute inset-0 flex items-center justify-center">
+                                    <span class="font-mono text-[9px] font-black text-neutral-400 dark:text-neutral-500 mix-blend-difference">TUJUAN</span>
+                                </div>
+                            </div>
+                            <div class="w-3/4 h-1.5 bg-neutral-400 dark:bg-neutral-600 rounded-b"></div>
+                        </div>
+
+                    </div>
+
+                    <!-- Bottom legend -->
+                    <div class="flex justify-center gap-4 mt-3 font-mono text-[9px] text-sub">
+                        <span><i class="fa-solid fa-square text-blue-400 mr-0.5"></i> Aliran Air</span>
+                        <span><i class="fa-solid fa-circle text-[#105666] dark:text-[#D3968C] mr-0.5"></i> Pompa Aktif</span>
+                        <span><i class="fa-solid fa-bolt text-amber-400 mr-0.5"></i> Input Listrik</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ══ SECONDARY OUTPUT ROW ══ -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+                <!-- Electrical info -->
+                <div class="card rounded-2xl p-4 cursor-pointer group" onclick="openModal('mElec')">
+                    <div class="flex justify-between items-center mb-3">
+                        <p class="label-xs text-main"><i class="fa-solid fa-bolt-lightning mr-1"></i>Kelistrikan Sistem</p>
+                        <i class="fa-solid fa-arrow-up-right-from-square text-[9px] text-sub opacity-0 group-hover:opacity-60 transition-opacity"></i>
+                    </div>
+                    <div class="font-mono text-xs space-y-2">
+                        <div class="flex justify-between border-b border-[#105666]/8 pb-1.5">
+                            <span class="text-sub">Konfigurasi</span>
+                            <span class="font-bold text-main">380 V, 3-Phase</span>
+                        </div>
+                        <div class="flex justify-between border-b border-[#105666]/8 pb-1.5">
+                            <span class="text-sub">Arus Estimasi</span>
+                            <span id="outAmpere" class="font-bold text-main">— A</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-sub">Frekuensi</span>
+                            <span class="font-bold text-main">50 Hz</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Motor load bar -->
+                <div class="card rounded-2xl p-4 cursor-pointer group" onclick="openModal('mLoad')">
+                    <div class="flex justify-between items-center mb-2">
+                        <p class="label-xs text-main"><i class="fa-solid fa-microchip mr-1"></i>Beban Motor</p>
+                        <span id="outLoadBadge" class="badge badge-green">Normal</span>
+                    </div>
+                    <p class="text-[10px] text-sub mb-3">Persentase daya terhadap kapasitas nominal 30 kW.</p>
+                    <div class="w-full bg-neutral-200 dark:bg-neutral-700 rounded-full h-3 overflow-hidden mb-1">
+                        <div id="outLoadBar" class="h-full bar-mid rounded-full transition-all duration-500" style="width:0%;"></div>
+                    </div>
+                    <div class="flex justify-between font-mono text-[10px] text-sub mt-1">
+                        <span>0%</span>
+                        <span id="outLoadPct" class="font-bold text-main">—</span>
+                        <span>100%</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ══ SKENARIO KOMPARATIF ══ -->
+            <div class="card rounded-2xl p-4">
+                <p class="label-xs text-sub mb-3"><i class="fa-solid fa-scale-balanced mr-1"></i>Skenario Komparatif Daya</p>
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-xs text-center">
+                    <div class="bg-[#105666]/8 rounded-xl p-2.5 border border-[#105666]/15 cursor-pointer hover:bg-[#105666]/15 transition-all" onclick="openModal('mSkenMin')">
+                        <p class="text-[9px] text-sub uppercase mb-1">Q = 15 L/s</p>
+                        <p id="sMin" class="font-bold text-main">— kW</p>
+                    </div>
+                    <div class="bg-[#105666]/15 rounded-xl p-2.5 border-2 border-[#105666]/35 cursor-pointer hover:bg-[#105666]/20 transition-all" onclick="openModal('mSkenNow')">
+                        <p class="text-[9px] text-main font-black uppercase mb-1">Saat Ini</p>
+                        <p id="sNow" class="font-black text-main">— kW</p>
+                    </div>
+                    <div class="bg-[#105666]/8 rounded-xl p-2.5 border border-[#105666]/15 cursor-pointer hover:bg-[#105666]/15 transition-all" onclick="openModal('mSkenMax')">
+                        <p class="text-[9px] text-sub uppercase mb-1">Q = 50 L/s</p>
+                        <p id="sMax" class="font-bold text-main">— kW</p>
+                    </div>
+                    <div class="bg-[#105666]/8 rounded-xl p-2.5 border border-[#105666]/15 cursor-pointer hover:bg-[#105666]/15 transition-all" onclick="openModal('mSkenH')">
+                        <p class="text-[9px] text-sub uppercase mb-1">H = 80 m</p>
+                        <p id="sH" class="font-bold text-main">— kW</p>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- FOOTER -->
+    <footer class="mt-5 text-center font-mono text-[10px] text-sub opacity-60">
+        HydroCalc Engine &nbsp;·&nbsp; P = (ρgQH)/η &nbsp;·&nbsp; Soal 2 — Estimasi Daya Pompa
+    </footer>
+</div>
+
+
+<!-- ═══════════════  MODALS  ═══════════════ -->
+
+<!-- Modal: Detail Daya -->
+<div id="mDaya" class="modal-wrap">
+    <div class="w-full max-w-sm modal-box">
+        <div class="bg-[#F7F4D5] dark:bg-[#0A3323] border border-[#105666]/25 rounded-3xl p-6 shadow-2xl">
+            <div class="flex justify-between items-start mb-4">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-bolt text-amber-500 text-lg"></i>
+                    <div>
+                        <h3 class="font-black text-xs text-[#0A3323] dark:text-[#F7F4D5] uppercase tracking-wide">Detail Estimasi Daya</h3>
+                        <p class="text-[9px] font-mono text-sub">Konversi Satuan Internasional</p>
+                    </div>
+                </div>
+                <button onclick="closeModal('mDaya')" class="w-6 h-6 rounded-full bg-black/8 hover:bg-black/15 flex items-center justify-center text-main transition-colors"><i class="fa-solid fa-xmark text-xs"></i></button>
+            </div>
+            <div class="font-mono text-xs text-[#105666] dark:text-[#F7F4D5]/90 space-y-2.5 border-y border-[#105666]/15 py-3 my-2">
+                <div class="flex justify-between"><span>KiloWatt (kW)</span><span id="pop-kw" class="font-black">—</span></div>
+                <div class="flex justify-between"><span>Watt (W)</span><span id="pop-w" class="font-bold">—</span></div>
+                <div class="flex justify-between"><span>Horsepower (HP)</span><span id="pop-hp" class="font-bold">—</span></div>
+                <div class="flex justify-between"><span>Daya Hidraulik (P_hyd)</span><span id="pop-hyd" class="font-bold">—</span></div>
+            </div>
+            <p class="text-[9px] text-[#105666]/65 dark:text-[#F7F4D5]/55 mb-4 bg-[#105666]/5 p-2.5 rounded-xl text-justify leading-relaxed">
+                Nilai ini adalah daya mekanis minimum yang harus disuplai oleh poros motor listrik. Rugi gesekan pada bearing dan impeller sudah diperhitungkan melalui faktor η (efisiensi).
+            </p>
+            <button onclick="closeModal('mDaya')" class="w-full py-2 bg-[#105666] text-[#F7F4D5] text-xs font-black rounded-xl uppercase tracking-wider">Tutup</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Kelistrikan -->
+<div id="mElec" class="modal-wrap">
+    <div class="w-full max-w-sm modal-box">
+        <div class="bg-[#F7F4D5] dark:bg-[#0A3323] border border-[#105666]/25 rounded-3xl p-6 shadow-2xl">
+            <div class="flex justify-between items-start mb-4">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-bolt-lightning text-[#105666] dark:text-[#D3968C] text-lg"></i>
+                    <div>
+                        <h3 class="font-black text-xs text-[#0A3323] dark:text-[#F7F4D5] uppercase tracking-wide">Analisis Kelistrikan</h3>
+                        <p class="text-[9px] font-mono text-sub">Spesifikasi Motor 3-Phase AC</p>
+                    </div>
+                </div>
+                <button onclick="closeModal('mElec')" class="w-6 h-6 rounded-full bg-black/8 hover:bg-black/15 flex items-center justify-center text-main"><i class="fa-solid fa-xmark text-xs"></i></button>
+            </div>
+            <div class="font-mono text-xs text-[#105666] dark:text-[#F7F4D5]/90 space-y-2.5 border-y border-[#105666]/15 py-3 my-2">
+                <div class="flex justify-between"><span>Tegangan Nominal</span><span class="font-bold">380 V</span></div>
+                <div class="flex justify-between"><span>Konfigurasi Phase</span><span class="font-bold">3-Phase AC</span></div>
+                <div class="flex justify-between"><span>Arus Estimasi (I)</span><span id="pop-amp" class="font-black text-main">—</span></div>
+                <div class="flex justify-between"><span>Power Factor (cos φ)</span><span class="font-bold">0,85</span></div>
+                <div class="flex justify-between"><span>Frekuensi</span><span class="font-bold">50 Hz</span></div>
+            </div>
+            <p class="text-[9px] text-[#105666]/65 dark:text-[#F7F4D5]/55 mb-4 bg-[#105666]/5 p-2.5 rounded-xl text-justify">
+                I = P / (√3 × V × cos φ). Nilai arus bervariasi sesuai beban daya yang dihitung berdasarkan parameter Q, H, dan η yang diinput.
+            </p>
+            <button onclick="closeModal('mElec')" class="w-full py-2 bg-[#105666] text-[#F7F4D5] text-xs font-black rounded-xl uppercase tracking-wider">Tutup</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Beban Motor -->
+<div id="mLoad" class="modal-wrap">
+    <div class="w-full max-w-sm modal-box">
+        <div class="bg-[#F7F4D5] dark:bg-[#0A3323] border border-[#105666]/25 rounded-3xl p-6 shadow-2xl">
+            <div class="flex justify-between items-start mb-4">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-microchip text-[#105666] dark:text-[#D3968C] text-lg"></i>
+                    <div>
+                        <h3 class="font-black text-xs text-[#0A3323] dark:text-[#F7F4D5] uppercase tracking-wide">Status Beban Motor</h3>
+                        <p class="text-[9px] font-mono text-sub">Toleransi Operasional Termal</p>
+                    </div>
+                </div>
+                <button onclick="closeModal('mLoad')" class="w-6 h-6 rounded-full bg-black/8 hover:bg-black/15 flex items-center justify-center text-main"><i class="fa-solid fa-xmark text-xs"></i></button>
+            </div>
+            <div class="font-mono text-xs text-[#105666] dark:text-[#F7F4D5]/90 space-y-2.5 border-y border-[#105666]/15 py-3 my-2">
+                <div class="flex justify-between"><span>Beban Aktual</span><span id="pop-load" class="font-black text-main">—</span></div>
+                <div class="flex justify-between"><span>Kapasitas Motor (nominal)</span><span class="font-bold">30,00 kW</span></div>
+            </div>
+            <p class="text-[9px] text-[#105666]/65 dark:text-[#F7F4D5]/55 mb-4 bg-[#105666]/5 p-2.5 rounded-xl text-justify">
+                Beban > 80% berisiko overheat. Pastikan sistem pendingin (kipas & radiator) berfungsi normal untuk menjaga suhu koil dalam batas aman.
+            </p>
+            <button onclick="closeModal('mLoad')" class="w-full py-2 bg-[#105666] text-[#F7F4D5] text-xs font-black rounded-xl uppercase tracking-wider">Tutup</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Skenario Min -->
+<div id="mSkenMin" class="modal-wrap">
+    <div class="w-full max-w-sm modal-box">
+        <div class="bg-[#F7F4D5] dark:bg-[#0A3323] border border-[#105666]/25 rounded-3xl p-6 shadow-2xl">
+            <div class="flex justify-between items-start mb-4">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-arrow-down-wide-short text-[#105666] dark:text-[#D3968C] text-lg"></i>
+                    <div>
+                        <h3 class="font-black text-xs text-[#0A3323] dark:text-[#F7F4D5] uppercase tracking-wide">Skenario Q = 15 L/s</h3>
+                        <p class="text-[9px] font-mono text-sub">Debit Aliran Minimum</p>
+                    </div>
+                </div>
+                <button onclick="closeModal('mSkenMin')" class="w-6 h-6 rounded-full bg-black/8 flex items-center justify-center text-main"><i class="fa-solid fa-xmark text-xs"></i></button>
+            </div>
+            <div class="font-mono text-xs text-[#105666] dark:text-[#F7F4D5]/90 space-y-2.5 border-y border-[#105666]/15 py-3 my-2">
+                <div class="flex justify-between"><span>Debit Tetap</span><span class="font-bold">15 L/detik</span></div>
+                <div class="flex justify-between"><span>Head & η</span><span id="pop-min-param" class="font-bold">—</span></div>
+                <div class="flex justify-between"><span>Estimasi Daya</span><span id="pop-min-val" class="font-black text-main">—</span></div>
+            </div>
+            <p class="text-[9px] text-[#105666]/65 dark:text-[#F7F4D5]/55 mb-4 bg-[#105666]/5 p-2.5 rounded-xl">Cocok untuk operasi malam hari atau distribusi area terbatas agar konsumsi listrik harian lebih hemat.</p>
+            <button onclick="closeModal('mSkenMin')" class="w-full py-2 bg-[#105666] text-[#F7F4D5] text-xs font-black rounded-xl uppercase tracking-wider">Tutup</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Skenario Now -->
+<div id="mSkenNow" class="modal-wrap">
+    <div class="w-full max-w-sm modal-box">
+        <div class="bg-[#F7F4D5] dark:bg-[#0A3323] border border-[#105666]/25 rounded-3xl p-6 shadow-2xl">
+            <div class="flex justify-between items-start mb-4">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-chart-line text-[#105666] dark:text-[#D3968C] text-lg"></i>
+                    <div>
+                        <h3 class="font-black text-xs text-[#0A3323] dark:text-[#F7F4D5] uppercase tracking-wide">Kondisi Aktual</h3>
+                        <p class="text-[9px] font-mono text-sub">Nilai Real-Time dari Slider Input</p>
+                    </div>
+                </div>
+                <button onclick="closeModal('mSkenNow')" class="w-6 h-6 rounded-full bg-black/8 flex items-center justify-center text-main"><i class="fa-solid fa-xmark text-xs"></i></button>
+            </div>
+            <div class="font-mono text-xs text-[#105666] dark:text-[#F7F4D5]/90 space-y-2.5 border-y border-[#105666]/15 py-3 my-2">
+                <div class="flex justify-between"><span>Debit (Q)</span><span id="pop-now-q" class="font-bold">—</span></div>
+                <div class="flex justify-between"><span>Head (H)</span><span id="pop-now-h" class="font-bold">—</span></div>
+                <div class="flex justify-between"><span>Efisiensi (η)</span><span id="pop-now-eff" class="font-bold">—</span></div>
+                <div class="flex justify-between"><span>Daya Aktual</span><span id="pop-now-val" class="font-black text-main">—</span></div>
+            </div>
+            <button onclick="closeModal('mSkenNow')" class="w-full py-2 bg-[#105666] text-[#F7F4D5] text-xs font-black rounded-xl uppercase tracking-wider">Tutup</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Skenario Max Q -->
+<div id="mSkenMax" class="modal-wrap">
+    <div class="w-full max-w-sm modal-box">
+        <div class="bg-[#F7F4D5] dark:bg-[#0A3323] border border-[#105666]/25 rounded-3xl p-6 shadow-2xl">
+            <div class="flex justify-between items-start mb-4">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-arrow-up-wide-short text-[#105666] dark:text-[#D3968C] text-lg"></i>
+                    <div>
+                        <h3 class="font-black text-xs text-[#0A3323] dark:text-[#F7F4D5] uppercase tracking-wide">Skenario Q = 50 L/s</h3>
+                        <p class="text-[9px] font-mono text-sub">Debit Aliran Tinggi</p>
+                    </div>
+                </div>
+                <button onclick="closeModal('mSkenMax')" class="w-6 h-6 rounded-full bg-black/8 flex items-center justify-center text-main"><i class="fa-solid fa-xmark text-xs"></i></button>
+            </div>
+            <div class="font-mono text-xs text-[#105666] dark:text-[#F7F4D5]/90 space-y-2.5 border-y border-[#105666]/15 py-3 my-2">
+                <div class="flex justify-between"><span>Debit Tetap</span><span class="font-bold">50 L/detik</span></div>
+                <div class="flex justify-between"><span>Head & η</span><span id="pop-max-param" class="font-bold">—</span></div>
+                <div class="flex justify-between"><span>Estimasi Daya</span><span id="pop-max-val" class="font-black text-main">—</span></div>
+            </div>
+            <p class="text-[9px] text-[#105666]/65 dark:text-[#F7F4D5]/55 mb-4 bg-[#105666]/5 p-2.5 rounded-xl">Perlu diverifikasi terhadap batas tekanan pipa agar tidak melampaui tekanan burst nominal instalasi.</p>
+            <button onclick="closeModal('mSkenMax')" class="w-full py-2 bg-[#105666] text-[#F7F4D5] text-xs font-black rounded-xl uppercase tracking-wider">Tutup</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Skenario H Tinggi -->
+<div id="mSkenH" class="modal-wrap">
+    <div class="w-full max-w-sm modal-box">
+        <div class="bg-[#F7F4D5] dark:bg-[#0A3323] border border-[#105666]/25 rounded-3xl p-6 shadow-2xl">
+            <div class="flex justify-between items-start mb-4">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-mountain text-[#105666] dark:text-[#D3968C] text-lg"></i>
+                    <div>
+                        <h3 class="font-black text-xs text-[#0A3323] dark:text-[#F7F4D5] uppercase tracking-wide">Skenario H = 80 m</h3>
+                        <p class="text-[9px] font-mono text-sub">Head Vertikal Tinggi</p>
+                    </div>
+                </div>
+                <button onclick="closeModal('mSkenH')" class="w-6 h-6 rounded-full bg-black/8 flex items-center justify-center text-main"><i class="fa-solid fa-xmark text-xs"></i></button>
+            </div>
+            <div class="font-mono text-xs text-[#105666] dark:text-[#F7F4D5]/90 space-y-2.5 border-y border-[#105666]/15 py-3 my-2">
+                <div class="flex justify-between"><span>Head Tetap</span><span class="font-bold">80 Meter</span></div>
+                <div class="flex justify-between"><span>Q & η</span><span id="pop-h-param" class="font-bold">—</span></div>
+                <div class="flex justify-between"><span>Estimasi Daya</span><span id="pop-h-val" class="font-black text-main">—</span></div>
+                <div class="flex justify-between"><span>Status</span><span class="font-black text-[#D3968C]">Torsi Tinggi ⚠</span></div>
+            </div>
+            <p class="text-[9px] text-[#105666]/65 dark:text-[#F7F4D5]/55 mb-4 bg-[#105666]/5 p-2.5 rounded-xl">Pastikan motor berklasifikasi isolasi kelas F atau H untuk mencegah degradasi akibat panas berlebih pada kondisi head ekstrim.</p>
+            <button onclick="closeModal('mSkenH')" class="w-full py-2 bg-[#105666] text-[#F7F4D5] text-xs font-black rounded-xl uppercase tracking-wider">Tutup</button>
+        </div>
+    </div>
+</div>
+
+
+<!-- ═══ JAVASCRIPT ═══ -->
+<script>
+    // ── SYNC SLIDERS & NUMBER INPUTS ──────────────────────────────
+    function syncInput(id) {
+        const v = document.getElementById('slider'+id).value;
+        document.getElementById('num'+id).value = v;
+        calculate();
+    }
+    function syncSlider(id) {
+        let v = parseFloat(document.getElementById('num'+id).value);
+        const mn = parseFloat(document.getElementById('num'+id).min);
+        const mx = parseFloat(document.getElementById('num'+id).max);
+        v = Math.min(mx, Math.max(mn, isNaN(v) ? mn : v));
+        document.getElementById('slider'+id).value = v;
+        calculate();
+    }
+
+    // ── CORE CALCULATION ──────────────────────────────────────────
+    function calc(Q_ls, H_m, eff_pct) {
+        const rho=1000, g=9.81;
+        const Q_m3s = Q_ls / 1000;
+        const eta   = eff_pct / 100;
+        const P_W   = (rho * g * Q_m3s * H_m) / eta;
+        return P_W;
+    }
+
+    function fmt(n, dec=2) {
+        return n.toFixed(dec).replace('.', ',');
+    }
+    function fmtKW(P_W)  { return fmt(P_W/1000) + ' kW'; }
+    function fmtW(P_W)   { return Math.round(P_W).toLocaleString('id-ID') + ' W'; }
+    function fmtHP(P_W)  { return fmt(P_W/745.7) + ' HP'; }
+    function fmtAmp(P_W) { return fmt(P_W / (380 * 1.732 * 0.85), 1) + ' A'; }
+
+    function calculate() {
+        const Q   = parseFloat(document.getElementById('sliderQ').value);
+        const H   = parseFloat(document.getElementById('sliderH').value);
+        const eff = parseFloat(document.getElementById('sliderEff').value);
+
+        const P_W  = calc(Q, H, eff);
+        const P_kW = P_W / 1000;
+
+        // ── Primary output
+        setFlash('outKW', fmtKW(P_W));
+        document.getElementById('outW').textContent  = fmtW(P_W);
+        document.getElementById('outHP').textContent = fmtHP(P_W);
+
+        // ── Popup: daya
+        document.getElementById('pop-kw').textContent  = fmtKW(P_W);
+        document.getElementById('pop-w').textContent   = fmtW(P_W);
+        document.getElementById('pop-hp').textContent  = fmtHP(P_W);
+        // Hydraulic power
+        const P_hyd = (1000*9.81*(Q/1000)*H)/1000;
+        document.getElementById('pop-hyd').textContent = fmt(P_hyd) + ' kW';
+
+        // ── Electrical
+        const amp = fmtAmp(P_W);
+        document.getElementById('outAmpere').textContent = amp;
+        document.getElementById('pop-amp').textContent   = amp;
+
+        // ── Motor load bar
+        const loadPct = Math.min(100, Math.round((P_kW / 30) * 100));
+        const bar = document.getElementById('outLoadBar');
+        bar.style.width = loadPct + '%';
+        let status, badgeClass;
+        if (loadPct < 40)      { bar.className = 'h-full bar-low rounded-full transition-all duration-500'; status = 'Rendah';       badgeClass = 'badge badge-green'; }
+        else if (loadPct > 80) { bar.className = 'h-full bar-high rounded-full transition-all duration-500'; status = 'Kritis ⚠';   badgeClass = 'badge badge-red';   }
+        else                   { bar.className = 'h-full bar-mid rounded-full transition-all duration-500';  status = 'Normal';       badgeClass = 'badge badge-amber'; }
+        document.getElementById('outLoadPct').textContent = loadPct + '% (' + status + ')';
+        document.getElementById('pop-load').textContent   = loadPct + '% (' + status + ')';
+        document.getElementById('outLoadBadge').textContent = status;
+        document.getElementById('outLoadBadge').className = badgeClass;
+
+        // ── Scenarios
+        const sMinW  = calc(15, H,  eff);
+        const sMaxW  = calc(50, H,  eff);
+        const sHW    = calc(Q,  80, eff);
+        document.getElementById('sMin').textContent = fmtKW(sMinW);
+        document.getElementById('sNow').textContent = fmtKW(P_W);
+        document.getElementById('sMax').textContent = fmtKW(sMaxW);
+        document.getElementById('sH').textContent   = fmtKW(sHW);
+
+        // popup params
+        document.getElementById('pop-min-param').textContent = 'H=' + H + 'm, η=' + eff + '%';
+        document.getElementById('pop-min-val').textContent   = fmtKW(sMinW);
+        document.getElementById('pop-now-q').textContent     = Q + ' L/s';
+        document.getElementById('pop-now-h').textContent     = H + ' m';
+        document.getElementById('pop-now-eff').textContent   = eff + '%';
+        document.getElementById('pop-now-val').textContent   = fmtKW(P_W);
+        document.getElementById('pop-max-param').textContent = 'H=' + H + 'm, η=' + eff + '%';
+        document.getElementById('pop-max-val').textContent   = fmtKW(sMaxW);
+        document.getElementById('pop-h-param').textContent   = 'Q=' + Q + 'L/s, η=' + eff + '%';
+        document.getElementById('pop-h-val').textContent     = fmtKW(sHW);
+
+        // ── VISUALIZATION update
+        // Gear speed: faster Q → faster spin
+        const gearDur = Math.max(0.4, 5 - Q * 0.04);
+        document.getElementById('visGear').style.animationDuration = gearDur + 's';
+        // Flow stripe speed
+        const flowDur = Math.max(0.3, 2 - Q * 0.015);
+        document.getElementById('visFlow1').style.animationDuration = flowDur + 's';
+        document.getElementById('visFlow2').style.animationDuration = flowDur + 's';
+
+        // Tank levels
+        const srcH = Math.max(10, 70 - Q * 0.55);
+        const dstH = Math.min(95, 15 + H * 0.75);
+        document.getElementById('visWaterSrc').style.height = srcH + '%';
+        document.getElementById('visWaterDst').style.height = dstH + '%';
+
+        // Labels
+        document.getElementById('visLabelQ').textContent  = Q + ' L/s';
+        document.getElementById('visLabelKW').textContent = fmtKW(P_W);
+        document.getElementById('visHeadLabel').textContent = 'Head: ' + H + 'm';
+    }
+
+    function setFlash(id, val) {
+        const el = document.getElementById(id);
+        el.textContent = val;
+        el.classList.remove('flash');
+        void el.offsetWidth;
+        el.classList.add('flash');
+    }
+
+    // ── MODALS ────────────────────────────────────────────────────
+    function openModal(id) {
+        const m = document.getElementById(id);
+        m.classList.add('open');
+    }
+    function closeModal(id) {
+        document.getElementById(id).classList.remove('open');
+    }
+    // Close on backdrop click
+    document.querySelectorAll('.modal-wrap').forEach(m => {
+        m.addEventListener('click', e => { if (e.target === m) m.classList.remove('open'); });
+    });
+
+    // ── DARK MODE ─────────────────────────────────────────────────
+    function toggleDark() {
+        document.body.classList.toggle('dark');
+        const icon = document.getElementById('themeIcon');
+        icon.className = document.body.classList.contains('dark')
+            ? 'fa-solid fa-sun text-amber-400 text-xs'
+            : 'fa-solid fa-moon text-main text-xs';
+    }
+
+    // ── CLOCK ─────────────────────────────────────────────────────
+    function updateClock() {
+        const now = new Date();
+        const mo = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+        document.getElementById('liveClock').textContent =
+            `${now.getDate()} ${mo[now.getMonth()]} ${now.getFullYear()} │ ${now.toTimeString().slice(0,8)}`;
+    }
+
+    // ── INIT ──────────────────────────────────────────────────────
+    window.addEventListener('load', () => {
+        calculate();
+        updateClock();
+        setInterval(updateClock, 1000);
+    });
+</script>
+</body>
+</html>
